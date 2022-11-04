@@ -1,6 +1,7 @@
 # custom
 .idea/
 cmake-build-debug/
+*.db
 
 # Prerequisites
 *.d
