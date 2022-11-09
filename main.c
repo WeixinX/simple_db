@@ -370,6 +370,7 @@ Cursor *table_start(Table *table) {
     return cursor;
 }
 
+
 // 返回给定 key 的位置
 // 如果 key 不存在，则返回它应当插入的位置
 Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key) {
@@ -402,6 +403,34 @@ Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key) {
     return cursor;
 }
 
+// 对中间节点进行递归查询
+Cursor *internal_node_find(Table *table, uint32_t page_num, uint32_t key) {
+    void *node = get_page(table->pager, page_num);
+    uint32_t num_keys = *internal_node_num_keys(node);
+
+    // 对中间节点进行二分查找
+    uint32_t min_idx = 0, max_idx = num_keys; // [0, num_keys]
+    while (min_idx < max_idx) {
+        uint32_t idx = (min_idx + max_idx) / 2;
+        uint32_t key_to_right = *internal_node_key(node, idx);
+        // [min_idx, idx] [idx + 1, max_idx]
+        if (key_to_right <= key) {
+            min_idx = idx + 1;
+        } else {
+            max_idx = idx;
+        }
+    }
+
+    // 递归查找
+    uint32_t child_num = *internal_node_child(node, min_idx);
+    void *child = get_page(table->pager, child_num);
+    switch (get_node_type(child)) {
+        case NODE_LEAF:
+            return leaf_node_find(table, child_num, key);
+        case NODE_INTERNAL:
+            return internal_node_find(table, child_num, key);
+    }
+}
 
 bool is_node_root(void *node) {
     uint8_t value = *((uint8_t *) (node + IS_ROOT_OFFSET));
@@ -431,8 +460,7 @@ Cursor *table_find(Table *table, uint32_t key) {
     if (get_node_type(root_node) == NODE_LEAF) {
         return leaf_node_find(table, root_page_num, key);
     } else {
-        printf("need to implement searching an internal node.\n");
-        exit(EXIT_FAILURE);
+        return internal_node_find(table, root_page_num, key);
     }
 }
 
@@ -569,7 +597,7 @@ const uint32_t LEAF_NODE_LEFT_SPLIT_COUNT = (LEAF_NODE_MAX_CELLS + 1) - LEAF_NOD
 
 void create_new_root(Table *table, uint32_t right_child_page_num) {
     void *root = get_page(table->pager, table->root_page_num);
-    
+
     // 把原节点数据迁移到左节点，并将左节点设置为非 root
     uint32_t left_child_page_num = get_unused_page_num(table->pager);
     void *left_child = get_page(table->pager, left_child_page_num);
